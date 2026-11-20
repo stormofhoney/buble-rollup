@@ -1,0 +1,86 @@
+{
+  "name": "buble-rollup",
+  "version": "0.1.0",
+  "description": "All-in-one bundler & ES2015+ transpiler \u2014 a 1:1 drop-in replacement for rollup and @rollup/plugin-buble.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/stormofhoney/buble-rollup.git"
+  },
+  "keywords": [
+    "rollup",
+    "buble",
+    "bundler",
+    "transpiler",
+    "es2015",
+    "es6",
+    "module",
+    "esm",
+    "commonjs",
+    "drop-in",
+    "replacement"
+  ],
+  "type": "commonjs",
+  "main": "./src/index.js",
+  "types": "./types/index.d.ts",
+  "bin": {
+    "rollup": "./bin/rollup.js",
+    "buble-rollup": "./bin/rollup.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./types/index.d.ts",
+      "import": "./index.mjs",
+      "require": "./src/index.js",
+      "default": "./src/index.js"
+    },
+    "./plugin": {
+      "types": "./types/plugin.d.ts",
+      "import": "./plugin.mjs",
+      "require": "./src/buble-plugin.js",
+      "default": "./src/buble-plugin.js"
+    },
+    "./buble": {
+      "types": "./types/plugin.d.ts",
+      "import": "./plugin.mjs",
+      "require": "./src/buble-plugin.js",
+      "default": "./src/buble-plugin.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "bin",
+    "src",
+    "types",
+    "index.mjs",
+    "plugin.mjs",
+    "README.md",
+    "ROADMAP.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18.19.0"
+  },
+  "scripts": {
+    "test": "node --test test/unit/*.test.js",
+    "test:unit": "node --test test/unit/*.test.js",
+    "test:integration": "node --test test/integration/",
+    "test:differential": "node --test test/differential/"
+  },
+  "dependencies": {
+    "@ampproject/remapping": "^2.3.0",
+    "@babel/parser": "^8.1.2",
+    "@babel/traverse": "^8.1.2",
+    "acorn": "^8.15.0",
+    "buble": "^0.20.0",
+    "magic-string": "^0.30.17",
+    "picomatch": "^4.0.2"
+  },
+  "devDependencies": {
+    "@rollup/plugin-buble": "^1.0.3",
+    "@rollup/plugin-commonjs": "^29.0.3",
+    "@rollup/plugin-json": "^6.1.0",
+    "@rollup/plugin-node-resolve": "^16.0.3",
+    "rollup": "^4.68.7"
+  }
+}
