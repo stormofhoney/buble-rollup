@@ -101,6 +101,14 @@ class Bundle {
 		const { output, warnings } = await this.generate(outputConfig);
 		const outOptions = normalizeOutputOptions(outputConfig, this.inputOptions, new Set())
 			.options;
+		// build the output bundle descriptor for generateBundle/writeBundle
+		const bundleMap = {};
+		for (const item of output) {
+			if (item.fileName) bundleMap[item.fileName] = item;
+		}
+		await this.graph.driver.sequential('generateBundle', [bundleMap, outOptions], {
+			hook: 'generateBundle'
+		});
 		const writtenFiles = [];
 		for (const item of output) {
 			let fileName = item.fileName;
@@ -124,6 +132,9 @@ class Bundle {
 			}
 			writtenFiles.push({ fileName, ...item });
 		}
+		await this.graph.driver.sequential('writeBundle', [bundleMap, outOptions], {
+			hook: 'writeBundle'
+		});
 		return { output, warnings };
 	}
 

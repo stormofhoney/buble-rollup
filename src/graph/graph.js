@@ -352,6 +352,27 @@ class Graph {
 				module.transformMaps.push({ plugin: plugin.name, map: result.map || null });
 			}
 		}
+		// built-in buble transpilation (default on; skipped when a buble
+		// plugin — e.g. the @rollup/plugin-buble drop-in — is already present)
+		if (this.options.transpile) {
+			const hasBublePlugin = this.options.plugins.some((p) => p && p.name === 'buble');
+			if (!hasBublePlugin) {
+				const opts = this.options.transpile === true ? {} : this.options.transpile;
+				const { transform: bubleTransform } = require('buble');
+				try {
+					const result = bubleTransform(current, {
+						...opts,
+						transforms: { ...(opts.transforms || {}), modules: false }
+					});
+					current = result.code;
+					module.transformMaps.push({ plugin: 'buble-rollup', map: result.map || null });
+				} catch (err) {
+					if (!err.plugin) err.plugin = 'buble-rollup';
+					if (!err.loc) err.loc = { file: id };
+					throw err;
+				}
+			}
+		}
 		module.transformedCode = current;
 
 		// analyse

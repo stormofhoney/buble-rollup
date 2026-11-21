@@ -482,6 +482,15 @@ function createEffectChecker(code, identPosMap, options) {
  * Parses and analyses a module: imports, exports, top-level bindings,
  * per-statement references and side effects.
  */
+function statementOfPath(path) {
+	let p = path;
+	while (p) {
+		if (p.isStatement && p.isStatement()) return p.node;
+		p = p.parentPath;
+	}
+	return null;
+}
+
 function analyzeModule(code, id, treeshakeOptions) {
 	const ast = parseCode(code);
 	const program = ast.program;
@@ -542,6 +551,99 @@ function analyzeModule(code, id, treeshakeOptions) {
 			}
 		}
 	});
+	// ---- nested scopes for rollup-style deconfliction (ChildScope semantics) ----
+	const nestedScopes = [];
+	{
+		const seen = new Set();
+		traverse(ast, {
+			enter(path) {
+				if (path.isProgram()) return;
+				const scope = path.scope;
+				// the program scope is also reachable via top-level statement
+				// paths (e.g. ExportNamedDeclaration) — it is handled by the
+				// chunk-level deconfliction, not here
+				if (!scope || scope.block.type === 'Program' || seen.has(scope)) return;
+				seen.add(scope);
+				const isFunction = path.isFunction();
+				const entries = Object.entries(scope.bindings);
+				if (entries.length === 0 && !isFunction) return;
+				const bindings = entries.map(([name, b]) => {
+					const refs = [];
+					for (const refPath of b.referencePaths) {
+						if (!isRenameableReference(refPath)) continue;
+						refs.push({
+							node: refPath.node,
+							shorthandKey: getShorthandKey(refPath),
+							parent: refPath.parent,
+							parentKey: refPath.parentKey
+						});
+					}
+					const violations = [];
+					let constantViolated = false;
+					for (const violPath of b.constantViolations) {
+						constantViolated = true;
+						for (const ident of extractViolationIdents(violPath)) {
+							violations.push({
+								node: ident,
+								shorthandKey: getShorthandKeyForIdent(ident, violPath),
+								parent:
+									ident.type === 'Identifier'
+										? findParentOfIdent(violPath.node, ident)
+										: null
+							});
+						}
+					}
+					return {
+						name,
+						kind: b.kind,
+						identifier: b.identifier,
+						statement: statementOfPath(b.path),
+						functionNode: null,
+						constantViolated,
+						refs,
+						violations,
+						importInfo: null,
+						importLink: null,
+						target: null,
+						exportsAliased: false,
+						included: false,
+						renderName: null,
+						markIncluded: null
+					};
+				});
+				nestedScopes.push({ node: path.node, isFunction, bindings });
+			}
+		});
+	}
+	// `this` expressions and `arguments` refs with their owning function
+	const thisExprs = [];
+	const argRefs = [];
+	traverse(ast, {
+		ThisExpression(path) {
+			const fn = path.getFunctionParent();
+			thisExprs.push({
+				start: path.node.start,
+				end: path.node.end,
+				fnNode: fn ? fn.node : null
+			});
+		},
+		Identifier(path) {
+			if (path.node.name !== 'arguments') return;
+			if (path.scope.getBinding('arguments')) return;
+			const fn = path.getFunctionParent();
+			argRefs.push({
+				start: path.node.start,
+				end: path.node.end,
+				fnNode: fn ? fn.node : null
+			});
+		}
+	});
+	// nested bindings are all included: our treeshake only removes top-level
+	// statements/declarators (the render pass skips ones inside removed ranges)
+	for (const s of nestedScopes) {
+		for (const b of s.bindings) b.included = true;
+	}
+
 	// Position -> binding map for effect checking and statement reference collection
 	const identPosMap = new Map();
 	for (const [binding, refs] of refsByBinding) {
@@ -777,6 +879,9 @@ function analyzeModule(code, id, treeshakeOptions) {
 		bindings,
 		refsByBinding,
 		violationsByBinding,
+		nestedScopes,
+		thisExprs,
+		argRefs,
 		identPosMap,
 		defaultInfo,
 		dynamicImports,

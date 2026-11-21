@@ -111,10 +111,14 @@ function computeRenderNames(graph, entry, outputOptions, format, onwarn) {
 		for (const dep of module.externalDeps) {
 			const ext = dep.externalModule;
 			if (!depByExternal.has(ext)) {
+				const paths = outputOptions.paths || {};
+				const pathEntry = paths[ext.id];
+				const importPath =
+					typeof pathEntry === 'function' ? pathEntry(ext.id) : pathEntry || ext.id;
 				depByExternal.set(ext, {
 					external: ext,
 					name: null,
-					importPath: ext.id,
+					importPath,
 					isChunk: false,
 					namedExportsMode: true,
 					namespaceVariableName: null,
@@ -420,35 +424,277 @@ function renderNamespaceObject(module, graph, snippets, format) {
 	return `${snippets.cnst} ${name} = /*#__PURE__*/Object.freeze(${obj});${snippets.n}`;
 }
 
+function firstLineBreakAfter(text) {
+	// port of rollup's findFirstLineBreakOutsideComment: returns the offset
+	// just past the first newline that is not inside a comment, or 0
+	let lineBreakPos = text.indexOf('\n');
+	let start = 0;
+	while (true) {
+		start = text.indexOf('/', start);
+		if (start === -1 || start > lineBreakPos) return lineBreakPos + 1 > 0 ? lineBreakPos + 1 : 0;
+		if (text[start + 1] === '/') return lineBreakPos + 1 > 0 ? lineBreakPos + 1 : 0;
+		const close = text.indexOf('*/', start + 2);
+		if (close === -1) return lineBreakPos + 1 > 0 ? lineBreakPos + 1 : 0;
+		start = close + 2;
+		if (start > lineBreakPos) lineBreakPos = text.indexOf('\n', start);
+	}
+}
+
+// port of rollup's ChildScope.deconflict for nested scopes: each scope
+// (functions and blocks, pre-order) deconflicts its own bindings against
+// free names accessed from that scope plus the synthetic `arguments`/`this`
+// variables that FunctionScope always declares first.
+function deconflictNestedBindings(analysis, removedRanges) {
+	const scopes = analysis.nestedScopes;
+	if (!scopes || scopes.length === 0) return;
+	const thisExprs = analysis.thisExprs || [];
+	const argRefs = analysis.argRefs || [];
+
+	const scopeByFnNode = new Map();
+	for (const s of scopes) {
+		if (s.isFunction) scopeByFnNode.set(s.node, s);
+	}
+
+	// innermost collected scope containing a position (pre-order => later = deeper)
+	const scopeOfPos = (start, end) => {
+		let found = null;
+		for (const s of scopes) {
+			if (s.node.start <= start && end <= s.node.end) found = s;
+		}
+		return found;
+	};
+	const isRemoved = (node) =>
+		removedRanges.some(([s, e]) => node.start >= s && node.end <= e);
+
+	// free-name entries per scope: a name referenced inside S that resolves
+	// outside S (rollup's accessedOutsideVariables)
+	const freeByScope = new Map();
+	const addFree = (S, entry) => {
+		if (!S) return;
+		let list = freeByScope.get(S);
+		if (!list) freeByScope.set(S, (list = []));
+		list.push(entry);
+	};
+	const ownerOf = new Map(); // binding -> owning scope or null (top-level)
+	for (const s of scopes) {
+		for (const b of s.bindings) ownerOf.set(b, s);
+	}
+	const topBindings = [...analysis.bindings.values()];
+	for (const b of topBindings) ownerOf.set(b, null);
+
+	for (const b of [...topBindings, ...scopes.flatMap((s) => s.bindings)]) {
+		if (isRemoved(b.identifier)) continue;
+		const refs = b.refs || analysis.refsByBinding.get(b) || [];
+		const viols = b.violations || analysis.violationsByBinding.get(b) || [];
+		for (const r of refs) {
+			if (!r.node || isRemoved(r.node)) continue;
+			const S = scopeOfPos(r.node.start, r.node.end);
+			if (S && S !== ownerOf.get(b)) addFree(S, { binding: b });
+		}
+		for (const v of viols) {
+			if (!v.node || isRemoved(v.node)) continue;
+			const S = scopeOfPos(v.node.start, v.node.end);
+			if (S && S !== ownerOf.get(b)) addFree(S, { binding: b });
+		}
+	}
+	// `this`/`arguments` free in a child scope resolve to the owning
+	// function's synthetic variable (renderName set when that fn was processed)
+	for (const t of thisExprs) {
+		const S = scopeOfPos(t.start, t.end);
+		const fnScope = t.fnNode ? scopeByFnNode.get(t.fnNode) : null;
+		if (S && fnScope && S !== fnScope) addFree(S, { thisFrom: fnScope });
+	}
+	for (const a of argRefs) {
+		const S = scopeOfPos(a.start, a.end);
+		const fnScope = a.fnNode ? scopeByFnNode.get(a.fnNode) : null;
+		if (S && fnScope && S !== fnScope) addFree(S, { argsFrom: fnScope });
+	}
+
+	// process scopes pre-order (parents before children)
+	for (const S of scopes) {
+		const usedNames = new Set();
+		for (const entry of freeByScope.get(S) || []) {
+			if (entry.binding) {
+				usedNames.add(
+					entry.binding.renderName != null
+						? entry.binding.renderName
+						: entry.binding.name
+				);
+			} else if (entry.thisFrom && entry.thisFrom.thisRenderName) {
+				usedNames.add(entry.thisFrom.thisRenderName);
+			} else if (entry.argsFrom && entry.argsFrom.argsRenderName) {
+				usedNames.add(entry.argsFrom.argsRenderName);
+			}
+		}
+		if (S.isFunction) {
+			// FunctionScope always declares `arguments` then `this` first;
+			// getSafeName renames `this` (reserved) to `this$1` which then
+			// occupies that name for real bindings in this scope
+			if (argRefs.some((a) => a.fnNode === S.node)) {
+				S.argsRenderName = getSafeName('arguments', usedNames, null);
+			}
+			if (thisExprs.some((t) => t.fnNode === S.node)) {
+				S.thisRenderName = getSafeName('this', usedNames, null);
+			}
+		}
+		for (const b of S.bindings) {
+			b.renderName = getSafeName(b.name, usedNames, null);
+		}
+	}
+}
+
+function fixEmptyIfBranches(node, ms, source, isIfAlternate) {
+	if (!node || typeof node !== 'object') return;
+	if (Array.isArray(node)) {
+		for (const child of node) fixEmptyIfBranches(child, ms, source, false);
+		return;
+	}
+	if (typeof node.type !== 'string') return;
+	if (node.type === 'IfStatement') {
+		const cons = node.consequent;
+		if (cons && cons.type === 'BlockStatement' && cons.body.length === 0) {
+			ms.overwrite(cons.start, cons.end, ';');
+		}
+		if (node.alternate) {
+			const alt = node.alternate;
+			if (alt.type === 'BlockStatement' && alt.body.length === 0) {
+				// rollup shouldKeepAlternateBranch: keep `;` when this if is
+				// itself an alternate of an outer if (else-if chains)
+				if (isIfAlternate) {
+					ms.overwrite(alt.start, node.end, ';');
+				} else if (cons) {
+					ms.remove(cons.end, node.end);
+				}
+			}
+		}
+	}
+	for (const key of Object.keys(node)) {
+		if (
+			key === 'type' ||
+			key === 'start' ||
+			key === 'end' ||
+			key === 'loc' ||
+			key === 'range' ||
+			key === 'parent' ||
+			key === 'scope' ||
+			key === 'leadingComments' ||
+			key === 'trailingComments' ||
+			key === 'comments'
+		) {
+			continue;
+		}
+		fixEmptyIfBranches(node[key], ms, source, key === 'alternate' && node.type === 'IfStatement');
+	}
+}
+
+function statementNeedsSemicolon(node, parent, source) {
+	if (source[node.end - 1] === ';') return false;
+	if (node.type === 'ExpressionStatement') return true;
+	if (node.type === 'VariableDeclaration') {
+		if (parent) {
+			if (
+				(parent.type === 'ForStatement' && parent.init === node) ||
+				((parent.type === 'ForInStatement' || parent.type === 'ForOfStatement') &&
+					parent.left === node) ||
+				parent.type === 'ExportNamedDeclaration'
+			) {
+				return false;
+			}
+		}
+		return true;
+	}
+	if (node.type === 'ExportNamedDeclaration') {
+		return !!node.declaration && node.declaration.type === 'VariableDeclaration';
+	}
+	if (node.type === 'ExportDefaultDeclaration') {
+		const d = node.declaration;
+		return !(d && (d.type === 'FunctionDeclaration' || d.type === 'ClassDeclaration'));
+	}
+	return false;
+}
+
+// rollup appends a semicolon to expression/variable/default-export
+// statements whose source does not already end with one, at every level
+function appendStatementSemicolons(node, parent, source, ms, removedRanges) {
+	if (!node || typeof node !== 'object') return;
+	if (Array.isArray(node)) {
+		for (const child of node) {
+			appendStatementSemicolons(child, parent, source, ms, removedRanges);
+		}
+		return;
+	}
+	if (typeof node.type !== 'string') return;
+	if (
+		typeof node.start === 'number' &&
+		removedRanges.some(([s, e]) => node.start >= s && node.end <= e)
+	) {
+		return;
+	}
+	if (statementNeedsSemicolon(node, parent, source)) {
+		ms.appendLeft(node.end, ';');
+	}
+	for (const key of Object.keys(node)) {
+		if (
+			key === 'type' ||
+			key === 'start' ||
+			key === 'end' ||
+			key === 'loc' ||
+			key === 'range' ||
+			key === 'parent' ||
+			key === 'scope' ||
+			key === 'leadingComments' ||
+			key === 'trailingComments' ||
+			key === 'comments'
+		) {
+			continue;
+		}
+		appendStatementSemicolons(node[key], node, source, ms, removedRanges);
+	}
+}
+
 function renderModule(module, graph, format, snippets, options) {
 	const analysis = module.analysis;
 	const ms = new MagicString(module.transformedCode || module.code);
 	const treeshakeOff = options.treeshake === false;
 
 	// 1. remove excluded statements / filter declarators
-	for (const stmt of analysis.statements) {
+	// Region model ported from rollup's renderStatementList: an excluded
+	// statement is removed from the previous statement's end (up to the
+	// first line break) through its own end (plus first line break), so
+	// comments attached to removed statements are swallowed. Leading file
+	// comment lines are preserved like rollup's Program.render.
+	const source = module.transformedCode || module.code;
+	const stmts = analysis.statements;
+	const removedRanges = [];
+	let regionStart = 0;
+	if (stmts.length > 0) {
+		while (source[regionStart] === '/' && /[*/]/.test(source[regionStart + 1] || '')) {
+			const off = firstLineBreakAfter(source.slice(regionStart, stmts[0].start));
+			if (!off) break;
+			regionStart += off;
+		}
+	}
+	for (let si = 0; si < stmts.length; si++) {
+		const stmt = stmts[si];
+		const nextStart = si + 1 < stmts.length ? stmts[si + 1].start : source.length;
 		const included = module.includedStatements.has(stmt);
+		const absStart = regionStart + firstLineBreakAfter(source.slice(regionStart, stmt.start));
+		const absEnd = stmt.end + firstLineBreakAfter(source.slice(stmt.end, nextStart));
 		if (stmt.type === 'ImportDeclaration') {
-			if (!included) {
-				const imp = analysis.imports.find((i) => i.node === stmt);
-				if (imp) ms.remove(imp.removalStart, imp.removalEnd);
-				else ms.remove(stmt.start, stmt.end);
-			} else {
-				const imp = analysis.imports.find((i) => i.node === stmt);
-				if (imp) ms.remove(imp.removalStart, imp.removalEnd);
-			}
+			// rollup's ImportDeclaration.needsBoundaries: removal always spans
+			// the statement's region (swallowing comments in the gaps)
+			ms.remove(absStart, absEnd);
+			removedRanges.push([absStart, absEnd]);
+			regionStart = stmt.end;
 			continue;
 		}
-		if (!included) {
-			ms.remove(stmt.start, stmt.end);
-			continue;
-		}
-		// declarator filtering
+		let effectiveIncluded = included;
 		if (
-			stmt.type === 'VariableDeclaration' ||
-			(stmt.type === 'ExportNamedDeclaration' &&
-				stmt.declaration &&
-				stmt.declaration.type === 'VariableDeclaration')
+			included &&
+			(stmt.type === 'VariableDeclaration' ||
+				(stmt.type === 'ExportNamedDeclaration' &&
+					stmt.declaration &&
+					stmt.declaration.type === 'VariableDeclaration'))
 		) {
 			const inner =
 				stmt.type === 'ExportNamedDeclaration' ? stmt.declaration : stmt;
@@ -462,22 +708,29 @@ function renderModule(module, graph, format, snippets, options) {
 					if (keep.includes(d)) continue;
 					let start = d.start;
 					let end = d.end;
-					const before = (module.transformedCode || module.code).slice(inner.start, d.start);
+					const before = source.slice(inner.start, d.start);
 					const commaIdx = before.lastIndexOf(',');
 					if (commaIdx !== -1) {
 						start = inner.start + commaIdx;
 					} else {
-						const after = (module.transformedCode || module.code).slice(d.end, inner.end);
+						const after = source.slice(d.end, inner.end);
 						const nextComma = after.indexOf(',');
 						if (nextComma !== -1) end = d.end + nextComma + 1;
 					}
 					ms.remove(start, end);
+					removedRanges.push([start, end]);
 				}
 			} else if (keep.length === 0) {
-				ms.remove(stmt.start, stmt.end);
-				continue;
+				effectiveIncluded = false;
 			}
 		}
+		if (!effectiveIncluded) {
+			ms.remove(absStart, absEnd);
+			removedRanges.push([absStart, absEnd]);
+			regionStart = stmt.end;
+			continue;
+		}
+		regionStart = stmt.end;
 	}
 
 	// 2. export operations
@@ -502,14 +755,33 @@ function renderModule(module, graph, format, snippets, options) {
 		}
 	}
 
+	// nested scope deconfliction needs removedRanges (loop 1) and runs before
+	// renames are applied; top-level names were set by computeRenderNames
+	deconflictNestedBindings(analysis, removedRanges);
+
 	// 3. binding renames
 	const renderIdText = (binding) =>
 		binding.renderProp != null
 			? `${binding.renderName}${snippets.getPropertyAccess(binding.renderProp)}`
 			: binding.renderName;
 
-	for (const binding of analysis.bindings.values()) {
+	const refsOf = (b) => b.refs || analysis.refsByBinding.get(b) || [];
+	const violationsOf = (b) =>
+		b.violations || analysis.violationsByBinding.get(b) || [];
+	const allBindings = [...analysis.bindings.values()];
+	for (const scope of analysis.nestedScopes || []) {
+		allBindings.push(...scope.bindings);
+	}
+	for (const binding of allBindings) {
 		if (!binding.included || binding.renderName == null) continue;
+		if (
+			binding.refs &&
+			removedRanges.some(
+				([s, e]) => binding.identifier.start >= s && binding.identifier.end <= e
+			)
+		) {
+			continue;
+		}
 		const original = binding.name;
 		const text = renderIdText(binding);
 		if (binding.exportsAliased && binding.renderName.startsWith('exports')) {
@@ -528,10 +800,10 @@ function renderModule(module, graph, format, snippets, options) {
 				ms.overwrite(binding.identifier.start, binding.identifier.end, binding.renderName);
 			}
 			// other refs
-			for (const ref of analysis.refsByBinding.get(binding) || []) {
+			for (const ref of refsOf(binding)) {
 				applyRef(ms, ref, text, snippets, binding);
 			}
-			for (const v of analysis.violationsByBinding.get(binding) || []) {
+			for (const v of violationsOf(binding)) {
 				if (v.node.type !== 'Identifier') continue;
 				// assignments to aliased exports: `exports.a = ...` handled via renderName text
 				ms.overwrite(v.node.start, v.node.end, text);
@@ -539,10 +811,10 @@ function renderModule(module, graph, format, snippets, options) {
 			continue;
 		}
 		if (text !== original) {
-			for (const ref of analysis.refsByBinding.get(binding) || []) {
+			for (const ref of refsOf(binding)) {
 				applyRef(ms, ref, text, snippets, binding);
 			}
-			for (const v of analysis.violationsByBinding.get(binding) || []) {
+			for (const v of violationsOf(binding)) {
 				if (v.node.type === 'Identifier') {
 					ms.overwrite(v.node.start, v.node.end, text);
 				}
@@ -556,7 +828,8 @@ function renderModule(module, graph, format, snippets, options) {
 					binding.kind === 'var' ||
 					binding.kind === 'function' ||
 					binding.kind === 'class' ||
-					binding.kind === 'hoisted')
+					binding.kind === 'hoisted' ||
+					binding.kind === 'param')
 			) {
 				const id = binding.identifier;
 				// only if it's the declared name (not a reference)
@@ -607,15 +880,30 @@ function renderModule(module, graph, format, snippets, options) {
 		ms.append(`\n\n${renderNamespaceObject(module, graph, snippets, format)}`);
 	}
 
+	// empty if-branches (rollup IfStatement.render overwrites them with `;`)
+	if (!treeshakeOff) {
+		for (const stmt of analysis.statements) {
+			if (!module.includedStatements.has(stmt)) continue;
+			fixEmptyIfBranches(stmt, ms, source, false);
+		}
+	}
+
+	// semicolons for all kept statements (every nesting level); runs after all
+	// renames so appendLeft content is not cleared by overwrites
+	for (const stmt of analysis.statements) {
+		if (!module.includedStatements.has(stmt)) continue;
+		appendStatementSemicolons(stmt, null, source, ms, removedRanges);
+	}
+
 	let code = ms.toString().trim();
 	return code;
 }
 
 function isReferencePosition(analysis, binding, id) {
-	for (const ref of analysis.refsByBinding.get(binding) || []) {
+	for (const ref of binding.refs || analysis.refsByBinding.get(binding) || []) {
 		if (ref.node === id) return true;
 	}
-	for (const v of analysis.violationsByBinding.get(binding) || []) {
+	for (const v of binding.violations || analysis.violationsByBinding.get(binding) || []) {
 		if (v.node === id) return true;
 	}
 	return false;
