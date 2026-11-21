@@ -365,9 +365,9 @@ class Graph {
 						transforms: { ...(opts.transforms || {}), modules: false }
 					});
 					current = result.code;
-					module.transformMaps.push({ plugin: 'buble-rollup', map: result.map || null });
+					module.transformMaps.push({ plugin: '@stormofhoney/rollup-comb', map: result.map || null });
 				} catch (err) {
-					if (!err.plugin) err.plugin = 'buble-rollup';
+					if (!err.plugin) err.plugin = '@stormofhoney/rollup-comb';
 					if (!err.loc) err.loc = { file: id };
 					throw err;
 				}
@@ -695,7 +695,7 @@ class Graph {
 			error({
 				code: 'PLUGIN_ERROR',
 				plugin: pluginName,
-				message: 'emitFile({ type: "chunk" }) is not yet supported by buble-rollup'
+				message: 'emitFile({ type: "chunk" }) is not yet supported by @stormofhoney/rollup-comb'
 			});
 		}
 		error({ code: 'PLUGIN_ERROR', plugin: pluginName, message: `Invalid emitFile type: ${file.type}` });

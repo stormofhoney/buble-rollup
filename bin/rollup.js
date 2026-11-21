@@ -14,7 +14,7 @@ const { pathToFileURL } = require('url');
 
 const pkg = require('../package.json');
 
-const HELP = `rollup (buble-rollup ${pkg.version})
+const HELP = `rollup (${pkg.name} ${pkg.version})
 Usage: rollup -c <config> [options]
 
 Options:
@@ -77,6 +77,11 @@ const REDIRECTS = [
 		bare: '@rollup/plugin-buble',
 		cjsPath: path.join(__dirname, '../src/buble-plugin.js'),
 		esmUrl: pathToFileURL(path.join(__dirname, '../plugin.mjs')).href
+	},
+	{
+		bare: '@stormofhoney/rollup-comb',
+		cjsPath: path.join(__dirname, '../src/index.js'),
+		esmUrl: pathToFileURL(path.join(__dirname, '../index.mjs')).href
 	},
 	{ bare: 'buble-rollup', cjsPath: path.join(__dirname, '../src/index.js'), esmUrl: pathToFileURL(path.join(__dirname, '../index.mjs')).href }
 ];

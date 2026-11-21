@@ -96,7 +96,7 @@ const INPUT_OPTION_KEYS = new Set([
 	'experimentalCacheExpiry',
 	'experimentalLogSideEffects',
 	'watch',
-	// buble-rollup specific
+	// @stormofhoney/rollup-comb specific
 	'transpile'
 ]);
 
@@ -129,7 +129,7 @@ function normalizeInputOptions(config = {}) {
 		shimMissingExports: config.shimMissingExports || false,
 		strictDeprecations: config.strictDeprecations || false,
 		treeshake: getTreeshake(config.treeshake),
-		// buble-rollup: built-in transpilation (default on, `false` disables)
+		// rollup-comb: built-in transpilation (default on, `false` disables)
 		transpile: config.transpile === undefined ? true : config.transpile,
 		_moduleContext:
 			typeof config.moduleContext === 'function'

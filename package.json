@@ -1,5 +1,5 @@
 {
-  "name": "buble-rollup",
+  "name": "@stormofhoney/rollup-comb",
   "version": "0.1.0",
   "description": "All-in-one bundler & ES2015+ transpiler \u2014 a 1:1 drop-in replacement for rollup and @rollup/plugin-buble.",
   "license": "MIT",
@@ -25,7 +25,7 @@
   "types": "./types/index.d.ts",
   "bin": {
     "rollup": "./bin/rollup.js",
-    "buble-rollup": "./bin/rollup.js"
+    "rollup-comb": "./bin/rollup.js"
   },
   "exports": {
     ".": {
