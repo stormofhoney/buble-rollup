@@ -9,13 +9,13 @@ All-in-one bundler & ES2015+ transpiler replacing `rollup` and `@rollup/plugin-b
 
 ```json
 "devDependencies": {
-  "@stormofhoney/rollup-comb": "github:stormofhoney/rollup-comb"
+  "@stormofhoney/rollup-comb": "^0.9.9-rc001"
 }
 ```
 
-## Versioning (git dependency)
+## Installing from git instead of the registry
 
-`^x.y.z` only works against the npm registry. For `github:` specs you pin via the URL fragment — npm resolves `#semver:` against **git tags**:
+Only needed before/without `npm publish`. `^x.y.z` alone is resolved against the npm registry; for `github:` specs you pin via the URL fragment — npm resolves `#semver:` against **git tags**:
 
 ```json
 "github:stormofhoney/rollup-comb#semver:^0.9.9-rc001"   // like ^x.y.z, against tags
