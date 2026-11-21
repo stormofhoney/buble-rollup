@@ -9,6 +9,16 @@ All-in-one bundler & ES2015+ transpiler replacing `rollup` and `@rollup/plugin-b
 
 ```json
 "devDependencies": {
-  "@stormofhoney/rollup-comb": "github:stormofhoney/buble-rollup"
+  "@stormofhoney/rollup-comb": "github:stormofhoney/rollup-comb"
 }
+```
+
+## Development
+
+The package itself has **no dependencies and no devDependencies**. Tooling for tests/builds is installed on demand (not saved to package.json):
+
+```sh
+npm run dev:install   # babel, esbuild, buble, rollup, … (node_modules only)
+npm test
+npm run build         # regenerates dist/ — commit it, git installs use it as-is
 ```

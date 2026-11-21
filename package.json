@@ -1,28 +1,24 @@
 {
   "name": "@stormofhoney/rollup-comb",
   "version": "0.9.9-rc001",
-  "description": "All-in-one bundler & ES2015+ transpiler \u2014 a 1:1 drop-in replacement for rollup and @rollup/plugin-buble.",
+  "description": "All-in-one bundler & ES2015+ transpiler replacing rollup and @rollup/plugin-buble \u2014 zero dependencies",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/stormofhoney/buble-rollup.git"
+    "url": "git+https://github.com/stormofhoney/rollup-comb.git"
+  },
+  "homepage": "https://github.com/stormofhoney/rollup-comb#readme",
+  "bugs": {
+    "url": "https://github.com/stormofhoney/rollup-comb/issues"
   },
   "keywords": [
     "rollup",
-    "buble",
     "bundler",
+    "buble",
     "transpiler",
     "es2015",
-    "es6",
-    "module",
-    "esm",
-    "commonjs",
-    "drop-in",
-    "replacement"
+    "zero-dependencies"
   ],
-  "type": "commonjs",
-  "main": "./src/index.js",
-  "types": "./types/index.d.ts",
   "bin": {
     "rollup": "./bin/rollup.js",
     "rollup-comb": "./bin/rollup.js"
@@ -55,29 +51,15 @@
     "README.md",
     "LICENSE"
   ],
-  "engines": {
-    "node": ">=18.19.0"
-  },
   "scripts": {
     "test": "node --test test/unit/*.test.js",
     "build": "node scripts/build.mjs",
-    "test:unit": "node --test test/unit/*.test.js",
-    "test:integration": "node --test test/integration/",
-    "test:differential": "node --test test/differential/"
+    "dev:install": "npm install --no-save --package-lock=false esbuild @babel/parser@^8.1.2 @babel/traverse@^8.1.2 buble@^0.20.0 magic-string@^0.30.17 picomatch@^4.0.2 acorn@^8.15.0 @ampproject/remapping@^2.3.0 rollup@^4.68.7 @rollup/plugin-buble@^1.0.3 @rollup/plugin-commonjs@^29.0.3 @rollup/plugin-json@^6.1.0 @rollup/plugin-node-resolve@^16.0.3"
   },
-  "devDependencies": {
-    "@ampproject/remapping": "^2.3.0",
-    "@babel/parser": "^8.1.2",
-    "@babel/traverse": "^8.1.2",
-    "@rollup/plugin-buble": "^1.0.3",
-    "@rollup/plugin-commonjs": "^29.0.3",
-    "@rollup/plugin-json": "^6.1.0",
-    "@rollup/plugin-node-resolve": "^16.0.3",
-    "acorn": "^8.15.0",
-    "buble": "^0.20.0",
-    "esbuild": "^0.28.2",
-    "magic-string": "^0.30.17",
-    "picomatch": "^4.0.2",
-    "rollup": "^4.68.7"
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
