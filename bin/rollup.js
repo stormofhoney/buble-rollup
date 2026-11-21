@@ -72,18 +72,18 @@ function findConfig() {
 }
 
 const REDIRECTS = [
-	{ bare: 'rollup', cjsPath: path.join(__dirname, '../src/index.js'), esmUrl: pathToFileURL(path.join(__dirname, '../index.mjs')).href },
+	{ bare: 'rollup', cjsPath: path.join(__dirname, '../dist/index.cjs'), esmUrl: pathToFileURL(path.join(__dirname, '../dist/index.mjs')).href },
 	{
 		bare: '@rollup/plugin-buble',
-		cjsPath: path.join(__dirname, '../src/buble-plugin.js'),
-		esmUrl: pathToFileURL(path.join(__dirname, '../plugin.mjs')).href
+		cjsPath: path.join(__dirname, '../dist/plugin.cjs'),
+		esmUrl: pathToFileURL(path.join(__dirname, '../dist/plugin.mjs')).href
 	},
 	{
 		bare: '@stormofhoney/rollup-comb',
-		cjsPath: path.join(__dirname, '../src/index.js'),
-		esmUrl: pathToFileURL(path.join(__dirname, '../index.mjs')).href
+		cjsPath: path.join(__dirname, '../dist/index.cjs'),
+		esmUrl: pathToFileURL(path.join(__dirname, '../dist/index.mjs')).href
 	},
-	{ bare: 'buble-rollup', cjsPath: path.join(__dirname, '../src/index.js'), esmUrl: pathToFileURL(path.join(__dirname, '../index.mjs')).href }
+	{ bare: 'buble-rollup', cjsPath: path.join(__dirname, '../dist/index.cjs'), esmUrl: pathToFileURL(path.join(__dirname, '../dist/index.mjs')).href }
 ];
 
 /** Rewrite `rollup` / `@rollup/plugin-buble` specifiers to this package. */
@@ -181,7 +181,7 @@ async function main() {
 		process.exit(1);
 	}
 
-	const { rollup } = require('../src/index.js');
+	const { rollup } = require('../dist/index.cjs');
 	let configs;
 	try {
 		configs = await loadConfig(configPath);
