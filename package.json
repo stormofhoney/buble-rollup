@@ -1,0 +1,65 @@
+{
+  "name": "@stormofhoney/rollup-comb",
+  "version": "0.9.9-rc001",
+  "description": "All-in-one bundler & ES2015+ transpiler replacing rollup and @rollup/plugin-buble \u2014 zero dependencies",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/stormofhoney/rollup-comb.git"
+  },
+  "homepage": "https://github.com/stormofhoney/rollup-comb#readme",
+  "bugs": {
+    "url": "https://github.com/stormofhoney/rollup-comb/issues"
+  },
+  "keywords": [
+    "rollup",
+    "bundler",
+    "buble",
+    "transpiler",
+    "es2015",
+    "zero-dependencies"
+  ],
+  "bin": {
+    "rollup": "./bin/rollup.js",
+    "rollup-comb": "./bin/rollup.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./types/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs",
+      "default": "./dist/index.cjs"
+    },
+    "./plugin": {
+      "types": "./types/plugin.d.ts",
+      "import": "./dist/plugin.mjs",
+      "require": "./dist/plugin.cjs",
+      "default": "./dist/plugin.cjs"
+    },
+    "./buble": {
+      "types": "./types/plugin.d.ts",
+      "import": "./dist/plugin.mjs",
+      "require": "./dist/plugin.cjs",
+      "default": "./dist/plugin.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "types",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test test/unit/*.test.js",
+    "build": "node scripts/build.mjs",
+    "dev:install": "npm install --no-save --package-lock=false esbuild @babel/parser@^8.1.2 @babel/traverse@^8.1.2 buble@^0.20.0 magic-string@^0.30.17 picomatch@^4.0.2 acorn@^8.15.0 @ampproject/remapping@^2.3.0 rollup@^4.68.7 @rollup/plugin-buble@^1.0.3 @rollup/plugin-commonjs@^29.0.3 @rollup/plugin-json@^6.1.0 @rollup/plugin-node-resolve@^16.0.3"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
